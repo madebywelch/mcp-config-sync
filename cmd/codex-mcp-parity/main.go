@@ -13,22 +13,32 @@ import (
 )
 
 type commonFlags struct {
-	claudeConfig       string
-	codexConfig        string
-	codexProjectConfig string
-	parityConfig       string
-	targetScope        string
-	project            string
-	includeUser        bool
-	includeLocal       bool
-	includeProjectFile bool
-	json               bool
+	claudeConfig        string
+	codexConfig         string
+	codexProjectConfig  string
+	parityConfig        string
+	direction           string
+	targetScope         string
+	claudeProjectTarget string
+	project             string
+	includeUser         bool
+	includeLocal        bool
+	includeProjectFile  bool
+	json                bool
 }
 
 type claudeGroup struct {
 	servers     []parity.ClaudeServer
 	diagnostics []parity.Diagnostic
 	target      string
+}
+
+type codexGroup struct {
+	servers       []parity.CodexServer
+	diagnostics   []parity.Diagnostic
+	target        string
+	targetKind    string
+	targetProject string
 }
 
 func main() {
@@ -102,7 +112,7 @@ func runSync(args []string) error {
 		return nil
 	}
 
-	results, err := parity.ApplyTargetedPlan(plan, !*noBackup)
+	results, err := applyPlan(common, plan, !*noBackup)
 	if err != nil {
 		return err
 	}
@@ -115,7 +125,7 @@ func runSync(args []string) error {
 		added += result.Added
 	}
 	if added == 0 {
-		fmt.Println("No Codex changes needed.")
+		fmt.Println("No target changes needed.")
 		return nil
 	}
 	fmt.Printf("Added %d server(s).\n", added)
@@ -159,6 +169,13 @@ func runSources(args []string) error {
 	common := addCommonFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if err := normalizeCommon(common); err != nil {
+		return err
+	}
+
+	if common.direction == "codex-to-claude" {
+		return runCodexSources(common)
 	}
 
 	groups, err := loadClaudeGroups(common)
@@ -212,29 +229,43 @@ func addCommonFlags(fs *flag.FlagSet) *commonFlags {
 	parityConfig, _ := parity.DefaultParityConfigPath()
 
 	common := &commonFlags{
-		claudeConfig:       claudeConfig,
-		codexConfig:        codexConfig,
-		parityConfig:       parityConfig,
-		targetScope:        "preserve",
-		project:            project,
-		includeUser:        true,
-		includeLocal:       true,
-		includeProjectFile: true,
+		claudeConfig:        claudeConfig,
+		codexConfig:         codexConfig,
+		parityConfig:        parityConfig,
+		direction:           "claude-to-codex",
+		targetScope:         "preserve",
+		claudeProjectTarget: "project-file",
+		project:             project,
+		includeUser:         true,
+		includeLocal:        true,
+		includeProjectFile:  true,
 	}
 	fs.StringVar(&common.claudeConfig, "claude-config", common.claudeConfig, "path to Claude Code JSON config")
 	fs.StringVar(&common.codexConfig, "codex-config", common.codexConfig, "path to Codex user/global TOML config")
 	fs.StringVar(&common.codexProjectConfig, "codex-project-config", common.codexProjectConfig, "path to Codex project TOML config (default: <project>/.codex/config.toml)")
 	fs.StringVar(&common.parityConfig, "parity-config", common.parityConfig, "path to codex-mcp-parity TOML config")
-	fs.StringVar(&common.targetScope, "target-scope", common.targetScope, "Codex target scope: preserve, user, or project")
-	fs.StringVar(&common.project, "project", common.project, "project directory for Claude local and .mcp.json scopes")
-	fs.BoolVar(&common.includeUser, "include-user", common.includeUser, "include Claude user-scope MCP servers")
-	fs.BoolVar(&common.includeLocal, "include-local", common.includeLocal, "include Claude local project MCP servers")
-	fs.BoolVar(&common.includeProjectFile, "include-project-file", common.includeProjectFile, "include project .mcp.json MCP servers")
+	fs.StringVar(&common.direction, "direction", common.direction, "sync direction: claude-to-codex or codex-to-claude")
+	fs.StringVar(&common.targetScope, "target-scope", common.targetScope, "target scope strategy: preserve, user, or project")
+	fs.StringVar(&common.claudeProjectTarget, "claude-project-target", common.claudeProjectTarget, "Claude project target for codex-to-claude: project-file or local")
+	fs.StringVar(&common.project, "project", common.project, "project directory for project-scoped MCP config")
+	fs.BoolVar(&common.includeUser, "include-user", common.includeUser, "include user-scope MCP servers")
+	fs.BoolVar(&common.includeLocal, "include-local", common.includeLocal, "include local project-scope MCP servers")
+	fs.BoolVar(&common.includeProjectFile, "include-project-file", common.includeProjectFile, "include project-file MCP servers")
 	fs.BoolVar(&common.json, "json", false, "emit JSON output without secret values")
 	return common
 }
 
 func buildPlan(common *commonFlags) (parity.Plan, error) {
+	if err := normalizeCommon(common); err != nil {
+		return parity.Plan{}, err
+	}
+	if common.direction == "codex-to-claude" {
+		return buildCodexToClaudePlan(common)
+	}
+	return buildClaudeToCodexPlan(common)
+}
+
+func buildClaudeToCodexPlan(common *commonFlags) (parity.Plan, error) {
 	groups, err := loadClaudeGroups(common)
 	if err != nil {
 		return parity.Plan{}, err
@@ -248,6 +279,33 @@ func buildPlan(common *commonFlags) (parity.Plan, error) {
 		plans = append(plans, parity.BuildPlan(group.servers, codex, group.diagnostics))
 	}
 	return parity.MergePlans(plans...), nil
+}
+
+func buildCodexToClaudePlan(common *commonFlags) (parity.Plan, error) {
+	groups, err := loadCodexGroups(common)
+	if err != nil {
+		return parity.Plan{}, err
+	}
+	plans := make([]parity.Plan, 0, len(groups))
+	for _, group := range groups {
+		claude, diagnostics, err := loadClaudeTarget(common, group.targetKind)
+		if err != nil {
+			return parity.Plan{}, err
+		}
+		diagnostics = append(group.diagnostics, diagnostics...)
+		plans = append(plans, parity.BuildCodexToClaudePlan(group.servers, claude, group.target, group.targetKind, group.targetProject, diagnostics))
+	}
+	return parity.MergePlans(plans...), nil
+}
+
+func applyPlan(common *commonFlags, plan parity.Plan, backup bool) ([]parity.ApplyResult, error) {
+	if err := normalizeCommon(common); err != nil {
+		return nil, err
+	}
+	if common.direction == "codex-to-claude" {
+		return parity.ApplyClaudeTargetedPlan(plan, backup)
+	}
+	return parity.ApplyTargetedPlan(plan, backup)
 }
 
 func loadClaude(common *commonFlags) ([]parity.ClaudeServer, []parity.Diagnostic, error) {
@@ -342,6 +400,114 @@ func loadClaudeGroups(common *commonFlags) ([]claudeGroup, error) {
 	}
 }
 
+func loadCodexGroups(common *commonFlags) ([]codexGroup, error) {
+	config, configDiagnostics, err := parity.LoadParityConfig(common.parityConfig)
+	if err != nil {
+		return nil, err
+	}
+	filter := func(servers []parity.CodexServer, diagnostics []parity.Diagnostic) ([]parity.CodexServer, []parity.Diagnostic) {
+		filtered, denyDiagnostics := parity.FilterDeniedCodexServers(servers, config)
+		diagnostics = append(diagnostics, denyDiagnostics...)
+		if len(configDiagnostics) > 0 {
+			diagnostics = append(append([]parity.Diagnostic{}, configDiagnostics...), diagnostics...)
+		}
+		return filtered, diagnostics
+	}
+
+	loadUser := func(target string, targetKind string, targetProject string) (codexGroup, error) {
+		servers, diagnostics, err := parity.LoadCodexServers(common.codexConfig, parity.Source{Kind: "codex-user", Path: common.codexConfig})
+		if err != nil {
+			return codexGroup{}, err
+		}
+		servers, diagnostics = filter(servers, diagnostics)
+		return codexGroup{servers: servers, diagnostics: diagnostics, target: target, targetKind: targetKind, targetProject: targetProject}, nil
+	}
+	loadProject := func(target string, targetKind string, targetProject string) (codexGroup, error) {
+		projectConfig, err := codexProjectTarget(common)
+		if err != nil {
+			return codexGroup{}, err
+		}
+		servers, diagnostics, err := parity.LoadCodexServers(projectConfig, parity.Source{Kind: "codex-project", Path: projectConfig})
+		if err != nil {
+			return codexGroup{}, err
+		}
+		servers, diagnostics = filter(servers, diagnostics)
+		return codexGroup{servers: servers, diagnostics: diagnostics, target: target, targetKind: targetKind, targetProject: targetProject}, nil
+	}
+
+	switch common.targetScope {
+	case "user":
+		target, targetKind, targetProject, err := claudeUserTarget(common)
+		if err != nil {
+			return nil, err
+		}
+		var groups []codexGroup
+		if common.includeUser {
+			group, err := loadUser(target, targetKind, targetProject)
+			if err != nil {
+				return nil, err
+			}
+			groups = append(groups, group)
+		}
+		if includeProjectSources(common) {
+			group, err := loadProject(target, targetKind, targetProject)
+			if err != nil {
+				return nil, err
+			}
+			groups = append(groups, group)
+		}
+		return groups, nil
+	case "project":
+		target, targetKind, targetProject, err := claudeProjectTarget(common)
+		if err != nil {
+			return nil, err
+		}
+		var groups []codexGroup
+		if common.includeUser {
+			group, err := loadUser(target, targetKind, targetProject)
+			if err != nil {
+				return nil, err
+			}
+			groups = append(groups, group)
+		}
+		if includeProjectSources(common) {
+			group, err := loadProject(target, targetKind, targetProject)
+			if err != nil {
+				return nil, err
+			}
+			groups = append(groups, group)
+		}
+		return groups, nil
+	case "preserve":
+		var groups []codexGroup
+		if common.includeUser {
+			target, targetKind, targetProject, err := claudeUserTarget(common)
+			if err != nil {
+				return nil, err
+			}
+			group, err := loadUser(target, targetKind, targetProject)
+			if err != nil {
+				return nil, err
+			}
+			groups = append(groups, group)
+		}
+		if includeProjectSources(common) {
+			target, targetKind, targetProject, err := claudeProjectTarget(common)
+			if err != nil {
+				return nil, err
+			}
+			group, err := loadProject(target, targetKind, targetProject)
+			if err != nil {
+				return nil, err
+			}
+			groups = append(groups, group)
+		}
+		return groups, nil
+	default:
+		return nil, fmt.Errorf("invalid --target-scope %q; expected preserve, user, or project", common.targetScope)
+	}
+}
+
 func codexProjectTarget(common *commonFlags) (string, error) {
 	if common.codexProjectConfig != "" {
 		return common.codexProjectConfig, nil
@@ -350,6 +516,12 @@ func codexProjectTarget(common *commonFlags) (string, error) {
 }
 
 func buildVerifyReport(common *commonFlags, options parity.VerifyOptions) (parity.VerifyReport, error) {
+	if err := normalizeCommon(common); err != nil {
+		return parity.VerifyReport{}, err
+	}
+	if common.direction == "codex-to-claude" {
+		return buildCodexToClaudeVerifyReport(common, options)
+	}
 	groups, err := loadClaudeGroups(common)
 	if err != nil {
 		return parity.VerifyReport{}, err
@@ -363,6 +535,138 @@ func buildVerifyReport(common *commonFlags, options parity.VerifyOptions) (parit
 		reports = append(reports, parity.Verify(group.servers, codex, group.diagnostics, options))
 	}
 	return parity.MergeVerifyReports(reports...), nil
+}
+
+func buildCodexToClaudeVerifyReport(common *commonFlags, options parity.VerifyOptions) (parity.VerifyReport, error) {
+	groups, err := loadCodexGroups(common)
+	if err != nil {
+		return parity.VerifyReport{}, err
+	}
+	reports := make([]parity.VerifyReport, 0, len(groups))
+	for _, group := range groups {
+		claude, diagnostics, err := loadClaudeTarget(common, group.targetKind)
+		if err != nil {
+			return parity.VerifyReport{}, err
+		}
+		diagnostics = append(group.diagnostics, diagnostics...)
+		reports = append(reports, parity.VerifyCodexToClaude(group.servers, claude, group.target, diagnostics, options))
+	}
+	return parity.MergeVerifyReports(reports...), nil
+}
+
+func loadClaudeTarget(common *commonFlags, targetKind string) ([]parity.ClaudeServer, []parity.Diagnostic, error) {
+	switch targetKind {
+	case parity.TargetClaudeUser:
+		return parity.LoadClaudeServers(parity.ClaudeLoadOptions{
+			ConfigPath:          common.claudeConfig,
+			ProjectPath:         common.project,
+			IncludeUser:         true,
+			IncludeLocal:        false,
+			IncludeProjectFile:  false,
+			DedupeByPrecedence:  true,
+			RespectDisabledSets: true,
+		})
+	case parity.TargetClaudeLocal:
+		return parity.LoadClaudeServers(parity.ClaudeLoadOptions{
+			ConfigPath:          common.claudeConfig,
+			ProjectPath:         common.project,
+			IncludeUser:         false,
+			IncludeLocal:        true,
+			IncludeProjectFile:  false,
+			DedupeByPrecedence:  true,
+			RespectDisabledSets: true,
+		})
+	case parity.TargetClaudeProject:
+		return parity.LoadClaudeServers(parity.ClaudeLoadOptions{
+			ConfigPath:          common.claudeConfig,
+			ProjectPath:         common.project,
+			IncludeUser:         false,
+			IncludeLocal:        false,
+			IncludeProjectFile:  true,
+			DedupeByPrecedence:  true,
+			RespectDisabledSets: true,
+		})
+	default:
+		return nil, nil, fmt.Errorf("unsupported Claude target kind %q", targetKind)
+	}
+}
+
+func includeProjectSources(common *commonFlags) bool {
+	return common.includeLocal || common.includeProjectFile
+}
+
+func claudeUserTarget(common *commonFlags) (string, string, string, error) {
+	return common.claudeConfig, parity.TargetClaudeUser, "", nil
+}
+
+func claudeProjectTarget(common *commonFlags) (string, string, string, error) {
+	project, err := parity.CleanProjectPath(common.project)
+	if err != nil {
+		return "", "", "", err
+	}
+	switch common.claudeProjectTarget {
+	case "project-file":
+		path, err := parity.DefaultClaudeProjectConfigPath(project)
+		if err != nil {
+			return "", "", "", err
+		}
+		return path, parity.TargetClaudeProject, project, nil
+	case "local":
+		return common.claudeConfig, parity.TargetClaudeLocal, project, nil
+	default:
+		return "", "", "", fmt.Errorf("invalid --claude-project-target %q; expected project-file or local", common.claudeProjectTarget)
+	}
+}
+
+func normalizeCommon(common *commonFlags) error {
+	switch common.direction {
+	case "claude-to-codex", "ctc":
+		common.direction = "claude-to-codex"
+	case "codex-to-claude", "ctc-reverse", "ctcl", "reverse":
+		common.direction = "codex-to-claude"
+	default:
+		return fmt.Errorf("invalid --direction %q; expected claude-to-codex or codex-to-claude", common.direction)
+	}
+	switch common.targetScope {
+	case "preserve", "user", "project":
+	default:
+		return fmt.Errorf("invalid --target-scope %q; expected preserve, user, or project", common.targetScope)
+	}
+	switch common.claudeProjectTarget {
+	case "project-file", "local":
+	default:
+		return fmt.Errorf("invalid --claude-project-target %q; expected project-file or local", common.claudeProjectTarget)
+	}
+	return nil
+}
+
+func runCodexSources(common *commonFlags) error {
+	groups, err := loadCodexGroups(common)
+	if err != nil {
+		return err
+	}
+	if common.json {
+		return writeJSON(map[string]any{
+			"servers": printableCodexSourcesFrom(groups),
+		})
+	}
+	count := 0
+	for _, group := range groups {
+		for _, diagnostic := range group.diagnostics {
+			fmt.Printf("%s: %s\n", strings.ToUpper(diagnostic.Level), diagnostic.Message)
+		}
+	}
+	for _, group := range groups {
+		for _, server := range group.servers {
+			count++
+			converted := parity.ConvertCodexServer(server)
+			fmt.Printf("%s\t%s\t%s\t%s\n", server.Name, server.Source.Label(), converted.Transport, group.target)
+		}
+	}
+	if count == 0 {
+		fmt.Println("No Codex MCP servers found for the selected scopes.")
+	}
+	return nil
 }
 
 type printableSource struct {
@@ -390,6 +694,23 @@ func printableSourcesFrom(groups []claudeGroup) []printableSource {
 	return sources
 }
 
+func printableCodexSourcesFrom(groups []codexGroup) []printableSource {
+	var sources []printableSource
+	for _, group := range groups {
+		for _, server := range group.servers {
+			converted := parity.ConvertCodexServer(server)
+			sources = append(sources, printableSource{
+				Name:      server.Name,
+				Source:    server.Source.Label(),
+				Target:    group.target,
+				Transport: converted.Transport,
+				Warnings:  converted.Warnings,
+			})
+		}
+	}
+	return sources
+}
+
 func writeJSON(v any) error {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
@@ -402,9 +723,9 @@ func printPlan(title string, plan parity.Plan) {
 		fmt.Printf("%s: %s\n", strings.ToUpper(diagnostic.Level), diagnostic.Message)
 	}
 	if len(plan.Adds) == 0 {
-		fmt.Println("No missing Codex MCP servers found.")
+		fmt.Println("No missing target MCP servers found.")
 	} else {
-		fmt.Println("Missing in Codex:")
+		fmt.Println("Missing in target:")
 		for _, add := range plan.Adds {
 			fmt.Printf("- %s (%s, from %s -> %s)\n", add.Name, add.Transport, add.Source.Label(), add.Target)
 			for _, warning := range add.Warnings {
@@ -413,7 +734,7 @@ func printPlan(title string, plan parity.Plan) {
 		}
 	}
 	if len(plan.Skipped) > 0 {
-		fmt.Println("Already present in Codex:")
+		fmt.Println("Already present in target:")
 		for _, skipped := range plan.Skipped {
 			if skipped.Target != "" {
 				fmt.Printf("- %s (%s in %s)\n", skipped.Name, skipped.Reason, skipped.Target)
@@ -429,12 +750,12 @@ func printVerify(report parity.VerifyReport) {
 		fmt.Printf("%s: %s\n", strings.ToUpper(diagnostic.Level), diagnostic.Message)
 	}
 	if len(report.Items) == 0 {
-		fmt.Println("No selected Claude MCP servers found.")
+		fmt.Println("No selected MCP servers found.")
 		return
 	}
 	for _, item := range report.Items {
 		status := "ok"
-		if !item.PresentInCodex {
+		if !item.PresentInTarget {
 			status = "missing"
 		}
 		if item.ProbeStatus != "" {
@@ -451,13 +772,13 @@ func printVerify(report parity.VerifyReport) {
 }
 
 func printUsage() {
-	fmt.Println(`codex-mcp-parity keeps Codex MCP config additive with Claude Code MCP config.
+	fmt.Println(`codex-mcp-parity keeps Claude Code and Codex MCP config in additive sync.
 
 Usage:
-  codex-mcp-parity diff [flags]
-  codex-mcp-parity sync [--dry-run] [flags]
-  codex-mcp-parity verify [--probe] [flags]
-  codex-mcp-parity sources [flags]
+  codex-mcp-parity diff [--direction claude-to-codex|codex-to-claude] [flags]
+  codex-mcp-parity sync [--dry-run] [--direction claude-to-codex|codex-to-claude] [flags]
+  codex-mcp-parity verify [--probe] [--direction claude-to-codex|codex-to-claude] [flags]
+  codex-mcp-parity sources [--direction claude-to-codex|codex-to-claude] [flags]
   codex-mcp-parity init-config [flags]
 
 Run a command with -h for flags.`)

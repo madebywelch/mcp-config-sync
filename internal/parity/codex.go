@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -44,4 +45,30 @@ func LoadCodexConfig(path string) (CodexConfig, error) {
 	}
 
 	return CodexConfig{Path: path, Servers: servers}, nil
+}
+
+func LoadCodexServers(path string, source Source) ([]CodexServer, []Diagnostic, error) {
+	config, err := LoadCodexConfig(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	if source.Path == "" {
+		source.Path = config.Path
+	}
+
+	names := make([]string, 0, len(config.Servers))
+	for name := range config.Servers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	servers := make([]CodexServer, 0, len(names))
+	for _, name := range names {
+		servers = append(servers, CodexServer{
+			Name:   name,
+			Config: config.Servers[name],
+			Source: source,
+		})
+	}
+	return servers, nil, nil
 }

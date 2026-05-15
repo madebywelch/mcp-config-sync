@@ -64,3 +64,37 @@ func TestConvertRejectsInvalid(t *testing.T) {
 		t.Fatal("expected conversion error")
 	}
 }
+
+func TestConvertCodexHTTPHeaders(t *testing.T) {
+	server := CodexServer{
+		Name: "secure",
+		Config: map[string]any{
+			"url":                  "https://example.com/mcp",
+			"bearer_token_env_var": "API_TOKEN",
+			"http_headers": map[string]any{
+				"X-Region": "us-east-1",
+			},
+			"env_http_headers": map[string]any{
+				"X-Env": "DYNAMIC_HEADER",
+			},
+		},
+	}
+
+	converted := ConvertCodexServer(server)
+	if converted.Error != "" {
+		t.Fatalf("unexpected error: %s", converted.Error)
+	}
+	if converted.Config["type"] != "http" {
+		t.Fatalf("type = %v", converted.Config["type"])
+	}
+	headers := converted.Config["headers"].(map[string]string)
+	if got := headers["Authorization"]; got != "Bearer ${API_TOKEN}" {
+		t.Fatalf("authorization = %q", got)
+	}
+	if got := headers["X-Env"]; got != "${DYNAMIC_HEADER}" {
+		t.Fatalf("env header = %q", got)
+	}
+	if got := headers["X-Region"]; got != "us-east-1" {
+		t.Fatalf("static header = %q", got)
+	}
+}

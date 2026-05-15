@@ -98,6 +98,88 @@ func ConvertClaudeServer(server ClaudeServer) Conversion {
 	return result
 }
 
+func ConvertCodexServer(server CodexServer) Conversion {
+	result := Conversion{
+		Name:   server.Name,
+		Config: map[string]any{},
+	}
+
+	config := server.Config
+	if url, ok := asString(config["url"]); ok && url != "" {
+		result.Transport = "http"
+		result.Config["type"] = "http"
+		result.Config["url"] = url
+	} else if command, ok := asString(config["command"]); ok && command != "" {
+		result.Transport = "stdio"
+		result.Config["type"] = "stdio"
+		result.Config["command"] = command
+	} else {
+		result.Error = "server has neither url nor command"
+		return result
+	}
+
+	copyString(config, result.Config, "cwd")
+
+	if enabled, ok := asBool(config["enabled"]); ok && !enabled {
+		result.Config["disabled"] = true
+	}
+
+	if args, ok := stringSliceFromAny(config["args"]); ok && len(args) > 0 {
+		result.Config["args"] = args
+	} else if _, exists := config["args"]; exists {
+		result.Warnings = append(result.Warnings, "args is not a string array and was not copied")
+	}
+
+	if env, ok := mapStringStringFromAny(config["env"]); ok && len(env) > 0 {
+		result.Config["env"] = env
+	} else if _, exists := config["env"]; exists {
+		result.Warnings = append(result.Warnings, "env is not a string map and was not copied")
+	}
+
+	headers := map[string]string{}
+	if httpHeaders, ok := mapStringStringFromAny(config["http_headers"]); ok {
+		for key, value := range httpHeaders {
+			headers[key] = value
+		}
+	} else if _, exists := config["http_headers"]; exists {
+		result.Warnings = append(result.Warnings, "http_headers is not a string map and was not copied")
+	}
+	if envHeaders, ok := mapStringStringFromAny(config["env_http_headers"]); ok {
+		for key, value := range envHeaders {
+			if _, exists := headers[key]; exists {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("header %q exists in both http_headers and env_http_headers; static value kept", key))
+				continue
+			}
+			headers[key] = "${" + value + "}"
+		}
+	} else if _, exists := config["env_http_headers"]; exists {
+		result.Warnings = append(result.Warnings, "env_http_headers is not a string map and was not copied")
+	}
+	if bearerEnv, ok := asString(config["bearer_token_env_var"]); ok && bearerEnv != "" {
+		if _, exists := headers["Authorization"]; exists {
+			result.Warnings = append(result.Warnings, "bearer_token_env_var was not copied because Authorization header already exists")
+		} else {
+			headers["Authorization"] = "Bearer ${" + bearerEnv + "}"
+		}
+	}
+	if len(headers) > 0 {
+		result.Config["headers"] = headers
+	}
+
+	if scopes, ok := stringSliceFromAny(config["scopes"]); ok && len(scopes) > 0 {
+		result.Config["oauth"] = map[string]any{"scopes": scopes}
+	} else if _, exists := config["scopes"]; exists {
+		result.Warnings = append(result.Warnings, "scopes is not a string array and was not copied")
+	}
+
+	for _, key := range unsupportedCodexKeys(config) {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("unsupported Codex field %q was not copied", key))
+	}
+
+	sort.Strings(result.Warnings)
+	return result
+}
+
 func copyString(source map[string]any, target map[string]any, key string) {
 	if value, ok := asString(source[key]); ok && value != "" {
 		target[key] = value
@@ -172,6 +254,30 @@ func unsupportedKeys(config map[string]any) []string {
 		"oauth":         true,
 		"type":          true,
 		"url":           true,
+	}
+	var keys []string
+	for key := range config {
+		if !supported[key] {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func unsupportedCodexKeys(config map[string]any) []string {
+	supported := map[string]bool{
+		"args":                 true,
+		"bearer_token_env_var": true,
+		"command":              true,
+		"cwd":                  true,
+		"enabled":              true,
+		"env":                  true,
+		"env_http_headers":     true,
+		"http_headers":         true,
+		"scopes":               true,
+		"type":                 true,
+		"url":                  true,
 	}
 	var keys []string
 	for key := range config {

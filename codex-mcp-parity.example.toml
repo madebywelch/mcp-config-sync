@@ -1,11 +1,10 @@
 # codex-mcp-parity configuration
 #
-# Sync direction is always Claude Code -> Codex. This file only controls what
-# is allowed to be copied in that one direction.
+# Sync direction is selected per command. This file controls what is allowed
+# to be copied in either direction.
 
-# Names listed here are never copied from Claude into Codex.
+# Names listed here are never copied into the target config.
 deny_servers = [
   # "cloudflare-api",
   # "private-company-mcp",
 ]
-

@@ -23,14 +23,15 @@ type VerifyReport struct {
 }
 
 type VerifyItem struct {
-	Name           string   `json:"name"`
-	Source         string   `json:"source"`
-	Target         string   `json:"target"`
-	Transport      string   `json:"transport"`
-	PresentInCodex bool     `json:"present_in_codex"`
-	ProbeStatus    string   `json:"probe_status,omitempty"`
-	ProbeDetail    string   `json:"probe_detail,omitempty"`
-	Warnings       []string `json:"warnings,omitempty"`
+	Name            string   `json:"name"`
+	Source          string   `json:"source"`
+	Target          string   `json:"target"`
+	Transport       string   `json:"transport"`
+	PresentInTarget bool     `json:"present_in_target"`
+	PresentInCodex  bool     `json:"present_in_codex,omitempty"`
+	ProbeStatus     string   `json:"probe_status,omitempty"`
+	ProbeDetail     string   `json:"probe_detail,omitempty"`
+	Warnings        []string `json:"warnings,omitempty"`
 }
 
 func Verify(claude []ClaudeServer, codex CodexConfig, diagnostics []Diagnostic, options VerifyOptions) VerifyReport {
@@ -42,19 +43,61 @@ func Verify(claude []ClaudeServer, codex CodexConfig, diagnostics []Diagnostic, 
 	for _, server := range claude {
 		converted := ConvertClaudeServer(server)
 		item := VerifyItem{
-			Name:           server.Name,
-			Source:         server.Source.Label(),
-			Target:         codex.Path,
-			Transport:      converted.Transport,
-			PresentInCodex: codex.Servers[server.Name] != nil,
-			Warnings:       converted.Warnings,
+			Name:            server.Name,
+			Source:          server.Source.Label(),
+			Target:          codex.Path,
+			Transport:       converted.Transport,
+			PresentInTarget: codex.Servers[server.Name] != nil,
+			PresentInCodex:  codex.Servers[server.Name] != nil,
+			Warnings:        converted.Warnings,
 		}
 		if converted.Error != "" {
 			item.ProbeStatus = "invalid"
 			item.ProbeDetail = converted.Error
 			report.OK = false
 		}
-		if !item.PresentInCodex {
+		if !item.PresentInTarget {
+			report.OK = false
+		}
+		if options.Probe && converted.Error == "" {
+			item.ProbeStatus, item.ProbeDetail = probe(converted, options.Timeout)
+			if item.ProbeStatus == "unavailable" || item.ProbeStatus == "invalid" {
+				report.OK = false
+			}
+		}
+		report.Items = append(report.Items, item)
+	}
+
+	return report
+}
+
+func VerifyCodexToClaude(codex []CodexServer, claude []ClaudeServer, target string, diagnostics []Diagnostic, options VerifyOptions) VerifyReport {
+	report := VerifyReport{OK: true, Diagnostics: append([]Diagnostic{}, diagnostics...)}
+	if options.Timeout <= 0 {
+		options.Timeout = 5 * time.Second
+	}
+
+	existing := map[string]bool{}
+	for _, server := range claude {
+		existing[server.Name] = true
+	}
+
+	for _, server := range codex {
+		converted := ConvertCodexServer(server)
+		item := VerifyItem{
+			Name:            server.Name,
+			Source:          server.Source.Label(),
+			Target:          target,
+			Transport:       converted.Transport,
+			PresentInTarget: existing[server.Name],
+			Warnings:        converted.Warnings,
+		}
+		if converted.Error != "" {
+			item.ProbeStatus = "invalid"
+			item.ProbeDetail = converted.Error
+			report.OK = false
+		}
+		if !item.PresentInTarget {
 			report.OK = false
 		}
 		if options.Probe && converted.Error == "" {

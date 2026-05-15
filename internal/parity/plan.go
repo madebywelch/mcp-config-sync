@@ -26,6 +26,38 @@ func BuildPlan(claude []ClaudeServer, codex CodexConfig, diagnostics []Diagnosti
 	return plan
 }
 
+func BuildCodexToClaudePlan(codex []CodexServer, claude []ClaudeServer, target string, targetKind string, targetProject string, diagnostics []Diagnostic) Plan {
+	plan := Plan{Diagnostics: append([]Diagnostic{}, diagnostics...)}
+	existing := map[string]bool{}
+	for _, server := range claude {
+		existing[server.Name] = true
+	}
+
+	for _, server := range codex {
+		if existing[server.Name] {
+			plan.Skipped = append(plan.Skipped, SkippedServer{Name: server.Name, Target: target, Reason: "same name exists"})
+			continue
+		}
+		converted := ConvertCodexServer(server)
+		if converted.Error != "" {
+			plan.Diagnostics = append(plan.Diagnostics, Diagnostic{Level: "warning", Message: "skipping " + server.Name + ": " + converted.Error})
+			continue
+		}
+		plan.Adds = append(plan.Adds, PlannedAdd{
+			Name:          server.Name,
+			Source:        server.Source,
+			Target:        target,
+			TargetKind:    targetKind,
+			TargetProject: targetProject,
+			Transport:     converted.Transport,
+			Config:        converted.Config,
+			Warnings:      converted.Warnings,
+		})
+	}
+
+	return plan
+}
+
 func MergePlans(plans ...Plan) Plan {
 	var merged Plan
 	for _, plan := range plans {

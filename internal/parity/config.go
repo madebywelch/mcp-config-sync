@@ -12,10 +12,10 @@ import (
 
 const defaultParityConfig = `# codex-mcp-parity configuration
 #
-# Sync direction is always Claude Code -> Codex. This file only controls what
-# is allowed to be copied in that one direction.
+# Sync direction is selected per command. This file controls what is allowed
+# to be copied in either direction.
 #
-# Names listed here are never copied from Claude into Codex.
+# Names listed here are never copied into the target config.
 deny_servers = []
 `
 
@@ -77,6 +77,30 @@ func FilterDeniedServers(servers []ClaudeServer, config ParityConfig) ([]ClaudeS
 	}
 
 	filtered := make([]ClaudeServer, 0, len(servers))
+	var diagnostics []Diagnostic
+	for _, server := range servers {
+		if denied[server.Name] {
+			diagnostics = append(diagnostics, Diagnostic{
+				Level:   "info",
+				Message: fmt.Sprintf("skipping denied MCP server %q from %s", server.Name, server.Source.Label()),
+			})
+			continue
+		}
+		filtered = append(filtered, server)
+	}
+	return filtered, diagnostics
+}
+
+func FilterDeniedCodexServers(servers []CodexServer, config ParityConfig) ([]CodexServer, []Diagnostic) {
+	if len(config.DenyServers) == 0 {
+		return servers, nil
+	}
+	denied := map[string]bool{}
+	for _, name := range config.DenyServers {
+		denied[name] = true
+	}
+
+	filtered := make([]CodexServer, 0, len(servers))
 	var diagnostics []Diagnostic
 	for _, server := range servers {
 		if denied[server.Name] {

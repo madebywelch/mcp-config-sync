@@ -75,6 +75,21 @@ func mapStringString(value any) (map[string]string, bool) {
 	return result, true
 }
 
+func mapStringStringFromAny(value any) (map[string]string, bool) {
+	switch source := value.(type) {
+	case map[string]string:
+		result := map[string]string{}
+		for key, raw := range source {
+			result[key] = raw
+		}
+		return result, true
+	case map[string]any:
+		return mapStringString(source)
+	default:
+		return nil, false
+	}
+}
+
 func stringSlice(value any) ([]string, bool) {
 	items, ok := value.([]any)
 	if !ok {
@@ -89,4 +104,15 @@ func stringSlice(value any) ([]string, bool) {
 		result = append(result, text)
 	}
 	return result, true
+}
+
+func stringSliceFromAny(value any) ([]string, bool) {
+	switch items := value.(type) {
+	case []string:
+		return append([]string{}, items...), true
+	case []any:
+		return stringSlice(items)
+	default:
+		return nil, false
+	}
 }

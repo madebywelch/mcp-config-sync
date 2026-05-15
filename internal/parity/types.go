@@ -19,6 +19,10 @@ func (s Source) Label() string {
 		return "Claude project:" + s.Path
 	case "user":
 		return "Claude user:" + s.Path
+	case "codex-user":
+		return "Codex user:" + s.Path
+	case "codex-project":
+		return "Codex project:" + s.Path
 	default:
 		if s.Path != "" {
 			return s.Kind + ":" + s.Path
@@ -38,6 +42,12 @@ type CodexConfig struct {
 	Servers map[string]map[string]any `json:"-"`
 }
 
+type CodexServer struct {
+	Name   string         `json:"name"`
+	Config map[string]any `json:"-"`
+	Source Source         `json:"source"`
+}
+
 type Conversion struct {
 	Name      string         `json:"name"`
 	Config    map[string]any `json:"-"`
@@ -47,12 +57,14 @@ type Conversion struct {
 }
 
 type PlannedAdd struct {
-	Name      string         `json:"name"`
-	Source    Source         `json:"source"`
-	Target    string         `json:"target"`
-	Transport string         `json:"transport"`
-	Config    map[string]any `json:"-"`
-	Warnings  []string       `json:"warnings,omitempty"`
+	Name          string         `json:"name"`
+	Source        Source         `json:"source"`
+	Target        string         `json:"target"`
+	TargetKind    string         `json:"target_kind,omitempty"`
+	TargetProject string         `json:"target_project,omitempty"`
+	Transport     string         `json:"transport"`
+	Config        map[string]any `json:"-"`
+	Warnings      []string       `json:"warnings,omitempty"`
 }
 
 type SkippedServer struct {

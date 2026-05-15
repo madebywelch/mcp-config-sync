@@ -25,6 +25,22 @@ func DefaultCodexConfigPath() (string, error) {
 }
 
 func DefaultCodexProjectConfigPath(project string) (string, error) {
+	project, err := CleanProjectPath(project)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(project, ".codex", "config.toml"), nil
+}
+
+func DefaultClaudeProjectConfigPath(project string) (string, error) {
+	project, err := CleanProjectPath(project)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(project, ".mcp.json"), nil
+}
+
+func CleanProjectPath(project string) (string, error) {
 	if project == "" {
 		var err error
 		project, err = os.Getwd()
@@ -36,7 +52,7 @@ func DefaultCodexProjectConfigPath(project string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(filepath.Clean(absolute), ".codex", "config.toml"), nil
+	return filepath.Clean(absolute), nil
 }
 
 func DefaultParityConfigPath() (string, error) {
