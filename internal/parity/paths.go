@@ -60,5 +60,5 @@ func DefaultParityConfigPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(configDir, "codex-mcp-parity", "config.toml"), nil
+	return filepath.Join(configDir, "mcp-config-sync", "config.toml"), nil
 }

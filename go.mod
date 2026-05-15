@@ -1,4 +1,4 @@
-module github.com/madebywelch/codex-mcp-parity
+module github.com/madebywelch/mcp-config-sync
 
 go 1.26.1
 

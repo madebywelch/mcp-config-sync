@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/madebywelch/codex-mcp-parity/internal/parity"
+	"github.com/madebywelch/mcp-config-sync/internal/parity"
 )
 
 func TestStagedClaudeToCodexSync(t *testing.T) {

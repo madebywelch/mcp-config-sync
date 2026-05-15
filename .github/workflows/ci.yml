@@ -28,4 +28,4 @@ jobs:
         run: go vet ./...
 
       - name: Build
-        run: go build -o bin/codex-mcp-parity ./cmd/codex-mcp-parity
+        run: go build -o bin/mcp-config-sync ./cmd/mcp-config-sync

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/madebywelch/codex-mcp-parity/internal/parity"
+	"github.com/madebywelch/mcp-config-sync/internal/parity"
 )
 
 type commonFlags struct {
@@ -209,7 +209,7 @@ func runSources(args []string) error {
 func runInitConfig(args []string) error {
 	fs := flag.NewFlagSet("init-config", flag.ContinueOnError)
 	defaultPath, _ := parity.DefaultParityConfigPath()
-	path := fs.String("parity-config", defaultPath, "path to write codex-mcp-parity config")
+	path := fs.String("parity-config", defaultPath, "path to write mcp-config-sync config")
 	force := fs.Bool("force", false, "overwrite an existing config file")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -243,7 +243,7 @@ func addCommonFlags(fs *flag.FlagSet) *commonFlags {
 	fs.StringVar(&common.claudeConfig, "claude-config", common.claudeConfig, "path to Claude Code JSON config")
 	fs.StringVar(&common.codexConfig, "codex-config", common.codexConfig, "path to Codex user/global TOML config")
 	fs.StringVar(&common.codexProjectConfig, "codex-project-config", common.codexProjectConfig, "path to Codex project TOML config (default: <project>/.codex/config.toml)")
-	fs.StringVar(&common.parityConfig, "parity-config", common.parityConfig, "path to codex-mcp-parity TOML config")
+	fs.StringVar(&common.parityConfig, "parity-config", common.parityConfig, "path to mcp-config-sync TOML config")
 	fs.StringVar(&common.direction, "direction", common.direction, "sync direction: claude-to-codex or codex-to-claude")
 	fs.StringVar(&common.targetScope, "target-scope", common.targetScope, "target scope strategy: preserve, user, or project")
 	fs.StringVar(&common.claudeProjectTarget, "claude-project-target", common.claudeProjectTarget, "Claude project target for codex-to-claude: project-file or local")
@@ -772,14 +772,14 @@ func printVerify(report parity.VerifyReport) {
 }
 
 func printUsage() {
-	fmt.Println(`codex-mcp-parity keeps Claude Code and Codex MCP config in additive sync.
+	fmt.Println(`mcp-config-sync keeps Claude Code and Codex MCP config in additive sync.
 
 Usage:
-  codex-mcp-parity diff [--direction claude-to-codex|codex-to-claude] [flags]
-  codex-mcp-parity sync [--dry-run] [--direction claude-to-codex|codex-to-claude] [flags]
-  codex-mcp-parity verify [--probe] [--direction claude-to-codex|codex-to-claude] [flags]
-  codex-mcp-parity sources [--direction claude-to-codex|codex-to-claude] [flags]
-  codex-mcp-parity init-config [flags]
+  mcp-config-sync diff [--direction claude-to-codex|codex-to-claude] [flags]
+  mcp-config-sync sync [--dry-run] [--direction claude-to-codex|codex-to-claude] [flags]
+  mcp-config-sync verify [--probe] [--direction claude-to-codex|codex-to-claude] [flags]
+  mcp-config-sync sources [--direction claude-to-codex|codex-to-claude] [flags]
+  mcp-config-sync init-config [flags]
 
 Run a command with -h for flags.`)
 }

@@ -3,8 +3,7 @@
 test:
 	go test ./...
 	go vet ./...
-	go build -o bin/codex-mcp-parity ./cmd/codex-mcp-parity
+	go build -o bin/mcp-config-sync ./cmd/mcp-config-sync
 
 staged-test:
-	go test ./cmd/codex-mcp-parity -run Staged -count=1 -v
-
+	go test ./cmd/mcp-config-sync -run Staged -count=1 -v

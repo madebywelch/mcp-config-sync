@@ -73,7 +73,7 @@ func ApplyPlan(path string, plan Plan, backup bool) (ApplyResult, error) {
 	if output.Len() > 0 {
 		output.WriteString("\n\n")
 	}
-	output.WriteString("# Added by codex-mcp-parity. Existing Codex MCP entries were left unchanged.\n")
+	output.WriteString("# Added by mcp-config-sync. Existing Codex MCP entries were left unchanged.\n")
 
 	for _, add := range plan.Adds {
 		block, err := marshalCodexServer(add.Name, add.Config)
@@ -127,7 +127,7 @@ func atomicWriteFile(path string, content []byte, mode os.FileMode) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	temp, err := os.CreateTemp(dir, ".codex-mcp-parity-*")
+	temp, err := os.CreateTemp(dir, ".mcp-config-sync-*")
 	if err != nil {
 		return err
 	}

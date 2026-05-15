@@ -1,6 +1,6 @@
-# codex-mcp-parity
+# mcp-config-sync
 
-`codex-mcp-parity` is a small Go CLI that additively syncs MCP server configuration between Claude Code and Codex.
+`mcp-config-sync` is a small Go CLI that additively syncs MCP server configuration between Claude Code and Codex.
 
 It never performs a hidden two-way merge. You choose one direction per run:
 
@@ -32,16 +32,16 @@ Codex project config is loaded only for trusted projects. Claude project-target 
 ## Install
 
 ```sh
-go build -o bin/codex-mcp-parity ./cmd/codex-mcp-parity
+go build -o bin/mcp-config-sync ./cmd/mcp-config-sync
 ```
 
 ## Usage
 
 ```sh
-codex-mcp-parity diff --direction claude-to-codex
-codex-mcp-parity sync --direction claude-to-codex --dry-run
-codex-mcp-parity sync --direction codex-to-claude --dry-run
-codex-mcp-parity verify --direction codex-to-claude
+mcp-config-sync diff --direction claude-to-codex
+mcp-config-sync sync --direction claude-to-codex --dry-run
+mcp-config-sync sync --direction codex-to-claude --dry-run
+mcp-config-sync verify --direction codex-to-claude
 ```
 
 Common options:
@@ -51,7 +51,7 @@ Common options:
 --project PATH                  Project used for project-scope config
 --target-scope preserve         preserve, user, or project
 --claude-project-target MODE    project-file or local
---parity-config PATH            Path to codex-mcp-parity config
+--parity-config PATH            Path to mcp-config-sync config
 --json                          JSON output without secret values
 ```
 
@@ -60,7 +60,7 @@ Common options:
 Create a config file:
 
 ```sh
-codex-mcp-parity init-config
+mcp-config-sync init-config
 ```
 
 Then add server names that should never be copied in either direction:
@@ -72,7 +72,7 @@ deny_servers = [
 ]
 ```
 
-An example is included in [`codex-mcp-parity.example.toml`](codex-mcp-parity.example.toml).
+An example is included in [`mcp-config-sync.example.toml`](mcp-config-sync.example.toml).
 
 ## Testing
 

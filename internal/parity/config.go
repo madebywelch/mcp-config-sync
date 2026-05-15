@@ -10,7 +10,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-const defaultParityConfig = `# codex-mcp-parity configuration
+const defaultParityConfig = `# mcp-config-sync configuration
 #
 # Sync direction is selected per command. This file controls what is allowed
 # to be copied in either direction.
