@@ -74,6 +74,15 @@ deny_servers = [
 
 An example is included in [`codex-mcp-parity.example.toml`](codex-mcp-parity.example.toml).
 
+## Testing
+
+```sh
+make test
+make staged-test
+```
+
+The staged tests create temporary Claude and Codex user/project config files, run the CLI in both directions, verify deny-list behavior, and check idempotency.
+
 ## Notes
 
 - OAuth-backed MCP servers may still need a fresh login after sync.
